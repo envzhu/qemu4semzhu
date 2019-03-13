@@ -103,6 +103,10 @@ static void bcm2836_control_update(BCM2836ControlState *s)
     for (i = 0; i < BCM2836_NCORES; i++) {
         qemu_set_irq(s->irq[i], s->irqsrc[i] != 0);
         qemu_set_irq(s->fiq[i], s->fiqsrc[i] != 0);
+        if(s->irqsrc[i] != 0){
+            //printf("CORE IRQ pending : %d\n", s->irqsrc[i]);
+            //printf("CORE IRQ enable : %d\n", s->gpu_irq_enable);
+        }
     }
 }
 

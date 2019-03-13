@@ -2248,9 +2248,16 @@ static inline bool arm_excp_unmasked(CPUState *cs, unsigned int excp_idx,
              * masked from Secure state. The HCR and SCR settings
              * don't affect the masking logic, only the interrupt routing.
              */
-            if (target_el == 3 || !secure) {
+            if (target_el == 2 && !secure) {
+                // if hyp_timer is pending
+                
+                if(env->cp15.c14_timer[GTIMER_HYP].ctl&(1<<2)){
+                    unmasked = 1;
+                }
+            }else if(target_el == 3){
                 unmasked = 1;
             }
+
         } else {
             /* The old 32-bit-only environment has a more complicated
              * masking setup. HCR and SCR bits not only affect interrupt
@@ -2295,10 +2302,13 @@ static inline bool arm_excp_unmasked(CPUState *cs, unsigned int excp_idx,
             }
         }
     }
-
     /* The PSTATE bits only mask the interrupt if we have not overriden the
      * ability above.
      */
+    //if(unmasked || pstate_unmasked){
+     // printf("umasked : %#x, pstate umasked : %#x, target_el : %d, is_secure : %d\n",
+       // unmasked, pstate_unmasked, target_el, secure);
+    //}
     return unmasked || pstate_unmasked;
 }
 

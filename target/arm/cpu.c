@@ -332,7 +332,8 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     uint32_t target_el;
     uint32_t excp_idx;
     bool ret = false;
-
+    //if(env->exception.target_el==1)
+      //  printf("interrupt_request : %d, targetEL : 1, pc : %#x\n", interrupt_request,  env->pc);
     if (interrupt_request & CPU_INTERRUPT_FIQ) {
         excp_idx = EXCP_FIQ;
         target_el = arm_phys_excp_target_el(cs, excp_idx, cur_el, secure);
@@ -347,6 +348,7 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
         excp_idx = EXCP_IRQ;
         target_el = arm_phys_excp_target_el(cs, excp_idx, cur_el, secure);
         if (arm_excp_unmasked(cs, excp_idx, target_el)) {
+            //**printf("Cause IRQ, daif : %#4x\n", env->daif);
             cs->exception_index = excp_idx;
             env->exception.target_el = target_el;
             cc->do_interrupt(cs);

@@ -31,6 +31,7 @@ typedef struct DisasContext {
     int fp_excp_el; /* FP exception EL or 0 if enabled */
     int sve_excp_el; /* SVE exception EL or 0 if enabled */
     int sve_len;     /* SVE vector length in bytes */
+    bool abort_routed_to_el2;
     /* Flag indicating that exceptions from secure mode are routed to EL3. */
     bool secure_routed_to_el3;
     bool vfp_enabled; /* FP enabled via FPSCR.EN */
@@ -106,8 +107,15 @@ static inline int default_exception_el(DisasContext *s)
      * exceptions can only be routed to ELs above 1, so we target the higher of
      * 1 or the current EL.
      */
-    return (s->mmu_idx == ARMMMUIdx_S1SE0 && s->secure_routed_to_el3)
-            ? 3 : MAX(1, s->current_el);
+    if(s->mmu_idx == ARMMMUIdx_S1SE0 && s->secure_routed_to_el3)
+        return 3;
+    // TODO ORE
+/*
+    if(MAX(1, s->current_el) == 1 && s->abort_routed_to_el2 )
+        return 2;
+    */
+   
+    return MAX(1, s->current_el);
 }
 
 static inline void disas_set_insn_syndrome(DisasContext *s, uint32_t syn)

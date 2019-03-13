@@ -34,12 +34,25 @@ static void raise_exception(CPUARMState *env, uint32_t excp,
     CPUState *cs = CPU(arm_env_get_cpu(env));
 
     assert(!excp_is_internal(excp));
+    cs->interrupt_request = 0;
     cs->exception_index = excp;
     env->exception.syndrome = syndrome;
     env->exception.target_el = target_el;
+
     cpu_loop_exit(cs);
 }
 
+static void raise_virq(CPUARMState *env,  uint32_t target_el)
+{
+    CPUState *cs = CPU(arm_env_get_cpu(env));
+
+    assert(!excp_is_internal(EXCP_VIRQ));
+    cs->interrupt_request = CPU_INTERRUPT_VIRQ;
+    cs->exception_index = EXCP_VIRQ;
+    env->exception.target_el = target_el;
+
+    cpu_loop_exit(cs);
+}
 static int exception_target_el(CPUARMState *env)
 {
     int target_el = MAX(1, arm_current_el(env));
@@ -162,6 +175,7 @@ static void deliver_fault(ARMCPU *cpu, vaddr addr, MMUAccessType access_type,
 
     env->exception.vaddress = addr;
     env->exception.fsr = fsr;
+    //**printf("deliver_fault()\n");
     raise_exception(env, exc, syn, target_el);
 }
 
@@ -181,7 +195,7 @@ void tlb_fill(CPUState *cs, target_ulong addr, int size,
 
         /* now we have a real cpu fault */
         cpu_restore_state(cs, retaddr, true);
-
+        //**printf("tlb_fill fault, addr : %#x\n", addr);
         deliver_fault(cpu, addr, access_type, mmu_idx, &fi);
     }
 }
@@ -198,6 +212,7 @@ void arm_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr,
     cpu_restore_state(cs, retaddr, true);
 
     fi.type = ARMFault_Alignment;
+    printf("Are you 3 ?\n");
     deliver_fault(cpu, vaddr, access_type, mmu_idx, &fi);
 }
 
@@ -219,6 +234,7 @@ void arm_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr,
 
     fi.ea = arm_extabort_type(response);
     fi.type = ARMFault_SyncExternal;
+    printf("Are you 1 ? $pc : %#8x\n", cpu->env.pc);
     deliver_fault(cpu, addr, access_type, mmu_idx, &fi);
 }
 
@@ -357,6 +373,7 @@ void HELPER(setend)(CPUARMState *env)
 {
     env->uncached_cpsr ^= CPSR_E;
 }
+#include <stdio.h>
 
 /* Function checks whether WFx (WFI/WFE) instructions are set up to be trapped.
  * The function returns the target EL (1-3) if the instruction is to be trapped;
@@ -445,6 +462,7 @@ void HELPER(wfe)(CPUARMState *env)
      * (ie halting until some event occurs), so we never take
      * a configurable trap to a different exception level.
      */
+    //printf("wfe was executed!");
     HELPER(yield)(env);
 }
 
@@ -480,6 +498,7 @@ void HELPER(exception_internal)(CPUARMState *env, uint32_t excp)
 void HELPER(exception_with_syndrome)(CPUARMState *env, uint32_t excp,
                                      uint32_t syndrome, uint32_t target_el)
 {
+    //* printf("HELPER(exception_with_syndrome)()\n");
     raise_exception(env, excp, syndrome, target_el);
 }
 
@@ -865,6 +884,9 @@ void HELPER(pre_hvc)(CPUARMState *env)
     bool secure = false;
     bool undef;
 
+    //printf("sp_el1 : %#x\n", env->sp_el[1]);
+    //printf("vbar_el1 : %#x\n", env->cp15.vbar_el[1]);
+
     if (arm_is_psci_call(cpu, EXCP_HVC)) {
         /* If PSCI is enabled and this looks like a valid PSCI call then
          * that overrides the architecturally mandated HVC behaviour.
@@ -978,6 +1000,85 @@ static int el_from_spsr(uint32_t spsr)
     }
 }
 
+/* Function checks whether WFx (WFI/WFE) instructions are set up to be trapped.
+ * The function returns the target EL (1-3) if the instruction is to be trapped;
+ * otherwise it returns 0 indicating it is not trapped.
+ */
+static inline int check_raise_hyp_virt_interrupt(CPUARMState *env)
+{
+    int cur_el = arm_current_el(env);
+    unsigned int spsr_el2_idx = aarch64_banked_spsr_index(2);
+    uint32_t spsr_el2 = env->banked_spsr[spsr_el2_idx];
+    CPUState *cs = CPU(arm_env_get_cpu(env));
+
+    /* If we are currently in EL0 then we need to check if SCTLR is set up for
+     * WFx instructions being trapped to EL1. These trap bits don't exist in v7.
+     */
+    if (cur_el < 2 && !arm_is_secure(env) && arm_feature(env, ARM_FEATURE_V8)) {
+        if (env->cp15.hcr_el2 & HCR_VI) {
+            env->cp15.hcr_el2 &= ~HCR_VI;
+            qemu_log_mask(CPU_LOG_INT, "Cause vIRQ\n");
+            raise_virq(env, 1);
+            return 1;
+        } else if (env->cp15.hcr_el2 & HCR_VF) {
+            env->cp15.hcr_el2 &= ~HCR_VF;
+            printf("Cause vFIQ\n");
+            raise_exception(env, EXCP_FIQ, env->exception.syndrome, 1);
+            return 1;
+        } else if (env->cp15.hcr_el2 & HCR_VSE) {
+            env->cp15.hcr_el2 &= ~HCR_VSE;
+            //* printf("Cause vSEroor\n");
+            /* set esr_el1 */
+            env->exception.syndrome = env->cp15.esr_el[2];
+            //* printf("esr_el2 : %#8x\n", env->exception.syndrome);
+            switch(env->exception.syndrome>>26){
+case 0 :
+    /* Unknown reason exception */
+    cs->exception_index = EXCP_UDEF;
+    break;
+case 0x20 :
+    /* Instruction abort */
+    if((spsr_el2&0xf) == 0)
+        env->exception.syndrome = (0x21<<26) + (env->exception.syndrome&0x1FFF);
+    cs->exception_index = EXCP_UDEF;
+    break;
+case 0x24 :
+    /* Data abort */
+    if((spsr_el2&0xf) == 0)
+        env->exception.syndrome = (0x25<<26) + (env->exception.syndrome&0x1FFF);
+    cs->exception_index = EXCP_DATA_ABORT;
+    break;
+case 0x30 :
+    /* Breakpoint exception */
+    if((spsr_el2&0xf) == 0)
+        env->exception.syndrome = (0x31<<26) + (env->exception.syndrome&0x1FFF);
+    cs->exception_index = EXCP_BKPT;
+    break;
+#if 0
+case 0x32 :
+    /* Software Step exception */
+    if((spsr_el2&0xf) == 0)
+        env->exception.syndrome = (0x33<<26) + (env->exception.syndrome&0x1FFF);
+    exception_index = ;
+    break;
+case 0x34 :
+    /* Watchpoint exception */
+    if((spsr_el2&0xf) == 0)
+        env->exception.syndrome = (0x35<<26) + (env->exception.syndrome&0x1FFF);
+    exception_index = ;
+    break;
+#endif
+            }
+                        //* printf("esr_el1 : %#8x\n", env->exception.syndrome);
+                        //* printf("ec : %#2x\n", env->exception.syndrome>>26);
+                        raise_exception(env, cs->exception_index, env->exception.syndrome, 1);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 void HELPER(exception_return)(CPUARMState *env)
 {
     int cur_el = arm_current_el(env);
@@ -985,6 +1086,8 @@ void HELPER(exception_return)(CPUARMState *env)
     uint32_t spsr = env->banked_spsr[spsr_idx];
     int new_el;
     bool return_to_aa64 = (spsr & PSTATE_nRW) == 0;
+
+    //printf("before eret, pc : %#x, elr_el1 : %#x, elr_el2 : %#x\n", env->pc,  env->elr_el[1], env->elr_el[2]);
 
     aarch64_save_sp(env, cur_el);
 
@@ -1064,6 +1167,9 @@ void HELPER(exception_return)(CPUARMState *env)
     qemu_mutex_lock_iothread();
     arm_call_el_change_hook(arm_env_get_cpu(env));
     qemu_mutex_unlock_iothread();
+    
+    //**printf("pc : %#x, elr_el1 : %#x, elr_el2 : %#x, daif : %#x\n", env->pc,  env->elr_el[1], env->elr_el[2], env->daif);
+    check_raise_hyp_virt_interrupt(env);
 
     return;
 

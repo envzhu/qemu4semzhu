@@ -51,9 +51,11 @@ static void bcm2835_aux_update(BCM2835AuxState *s)
     s->iir = 0;
     if ((s->ier & RX_INT) && s->read_count != 0) {
         s->iir |= RX_INT;
+        printf("Mini UART recieve interrupt is happened\n");
     }
     if (s->ier & TX_INT) {
         s->iir |= TX_INT;
+        printf("Mini UART send interrupt is happened\n");
     }
     qemu_set_irq(s->irq, s->iir != 0);
 }
@@ -62,7 +64,6 @@ static uint64_t bcm2835_aux_read(void *opaque, hwaddr offset, unsigned size)
 {
     BCM2835AuxState *s = opaque;
     uint32_t c, res;
-
     switch (offset) {
     case AUX_IRQ:
         return s->iir != 0;
@@ -157,6 +158,7 @@ static void bcm2835_aux_write(void *opaque, hwaddr offset, uint64_t value,
 
     switch (offset) {
     case AUX_ENABLES:
+        printf("Enable AUX interrupts\n");
         if (value != 1) {
             qemu_log_mask(LOG_UNIMP, "%s: unsupported attempt to enable SPI "
                           "or disable UART\n", __func__);

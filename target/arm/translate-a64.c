@@ -316,6 +316,15 @@ static void gen_exception_internal_insn(DisasContext *s, int offset, int excp)
 static void gen_exception_insn(DisasContext *s, int offset, int excp,
                                uint32_t syndrome, uint32_t target_el)
 {
+    /* printf("gen_exception_insn ():\n s->pc: %#8x, offset: %#8x, excp: %d, syndrome: %d\n",
+                s->pc, offset, excp, syndrome); */
+    if((excp == EXCP_UDEF || excp == EXCP_PREFETCH_ABORT || excp == EXCP_DATA_ABORT) &&
+            MAX(1, s->current_el) == 1 && s->abort_routed_to_el2 ){
+        target_el = 2;
+        /* printf("gen_exception_insn ():\n s->pc: %#8x, offset: %#8x, excp: %d, syndrome: %d\n",
+                s->pc, offset, excp, syndrome); */
+    }
+
     gen_a64_set_pc_im(s->pc - offset);
     gen_exception(excp, syndrome, target_el);
     s->base.is_jmp = DISAS_NORETURN;
@@ -13554,6 +13563,9 @@ static int aarch64_tr_init_disas_context(DisasContextBase *dcbase,
     dc->condjmp = 0;
 
     dc->aarch64 = 1;
+
+    dc->abort_routed_to_el2 = arm_feature(env, ARM_FEATURE_EL2) &&
+                              env->cp15.hcr_el2 & HCR_AMO;
     /* If we are coming from secure EL0 in a system with a 32-bit EL3, then
      * there is no secure EL1, so we route exceptions to EL3.
      */

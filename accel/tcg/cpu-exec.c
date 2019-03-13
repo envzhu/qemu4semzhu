@@ -472,6 +472,8 @@ static inline void cpu_handle_debug_exception(CPUState *cpu)
 
 static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
 {
+    ARMCPU *arm = ARM_CPU(cpu);
+
     if (cpu->exception_index < 0) {
 #ifndef CONFIG_USER_ONLY
         if (replay_has_exception()
@@ -709,6 +711,10 @@ int cpu_exec(CPUState *cpu)
             qemu_mutex_unlock_iothread();
         }
     }
+    
+    ARMCPU *arm = ARM_CPU(cpu);
+
+    //printf("cpu_exec() :   env->exception.target_el : %d\n", arm->env.exception.target_el);
 
     /* if an exception is pending, we execute it here */
     while (!cpu_handle_exception(cpu, &ret)) {

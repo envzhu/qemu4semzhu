@@ -606,7 +606,8 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
 
         rc = qemu_fdt_setprop_sized_cells(fdt, "/memory", "reg",
                                           acells, binfo->loader_start,
-                                          scells, binfo->ram_size);
+                                          scells, 0x10000000);
+                                          //scells, binfo->ram_size);/*fine*/
         if (rc < 0) {
             fprintf(stderr, "couldn't set /memory/reg\n");
             goto fail;
@@ -617,7 +618,7 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
     if (rc < 0) {
         qemu_fdt_add_subnode(fdt, "/chosen");
     }
-
+/*
     if (binfo->kernel_cmdline && *binfo->kernel_cmdline) {
         rc = qemu_fdt_setprop_string(fdt, "/chosen", "bootargs",
                                      binfo->kernel_cmdline);
@@ -626,21 +627,29 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
             goto fail;
         }
     }
-
+  */  
     if (binfo->initrd_size) {
+        printf("dtb initrd\n");
+        /*
         rc = qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-start",
                                    binfo->initrd_start);
         if (rc < 0) {
             fprintf(stderr, "couldn't set /chosen/linux,initrd-start\n");
             goto fail;
         }
-
         rc = qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-end",
                                    binfo->initrd_start + binfo->initrd_size);
         if (rc < 0) {
             fprintf(stderr, "couldn't set /chosen/linux,initrd-end\n");
             goto fail;
         }
+        
+        rc = qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-end",
+                                   0xBBFFFFF);
+        if (rc < 0) {
+            fprintf(stderr, "couldn't set /chosen/linux,initrd-end\n");
+            goto fail;
+        }*/
     }
 
     fdt_add_psci_node(fdt);
@@ -671,7 +680,7 @@ static void do_cpu_reset(void *opaque)
     CPUState *cs = CPU(cpu);
     CPUARMState *env = &cpu->env;
     const struct arm_boot_info *info = env->boot_info;
-
+    
     cpu_reset(cs);
     if (info) {
         if (!info->is_linux) {
@@ -760,8 +769,10 @@ static void do_cpu_reset(void *opaque)
                 if (!have_dtb(info)) {
                     if (old_param) {
                         set_kernel_args_old(info, as);
+                        printf("set old param\n");
                     } else {
                         set_kernel_args(info, as);
+                        printf("set param\n");
                     }
                 }
             } else {
@@ -1038,9 +1049,11 @@ static void arm_load_kernel_notify(Notifier *notifier, void *data)
      * halfway into RAM, and for boards with 256MB of RAM or more we put
      * the initrd at 128MB.
      */
+    /* fix
     info->initrd_start = info->loader_start +
         MIN(info->ram_size / 2, 128 * 1024 * 1024);
-
+    */
+    info->initrd_start = 0x8000000;
     /* Assume that raw images are linux kernels, and ELF images are not.  */
     kernel_size = arm_load_elf(info, &elf_entry, &elf_low_addr,
                                &elf_high_addr, elf_machine, as);
@@ -1091,6 +1104,8 @@ static void arm_load_kernel_notify(Notifier *notifier, void *data)
                                           info->initrd_start,
                                           info->ram_size - info->initrd_start,
                                           as);
+            printf("initrd start addr : %#8x, size : %#x\n",
+                info->initrd_start, initrd_size);
             if (initrd_size < 0) {
                 initrd_size = load_image_targphys_as(info->initrd_filename,
                                                      info->initrd_start,

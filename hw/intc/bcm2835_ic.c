@@ -48,7 +48,10 @@ static void bcm2835_ic_update(BCM2835ICState *s)
     set = (s->gpu_irq_level & s->gpu_irq_enable)
         || (s->arm_irq_level & s->arm_irq_enable);
     qemu_set_irq(s->irq, set);
-
+    /*if(set){
+        printf("GPU IRQ level : %d\n", s->gpu_irq_level);
+        printf("GPU IRQ enable : %d\n", s->gpu_irq_enable);
+    }*/
 }
 
 static void bcm2835_ic_set_gpu_irq(void *opaque, int irq, int level)
@@ -57,6 +60,8 @@ static void bcm2835_ic_set_gpu_irq(void *opaque, int irq, int level)
 
     assert(irq >= 0 && irq < 64);
     s->gpu_irq_level = deposit64(s->gpu_irq_level, irq, 1, level != 0);
+    //printf("GPU IRQ : %d\n", irq);
+    //printf("GPU IRQ level : %d\n", s->gpu_irq_level);
     bcm2835_ic_update(s);
 }
 
@@ -133,6 +138,7 @@ static void bcm2835_ic_write(void *opaque, hwaddr offset, uint64_t val,
 {
     BCM2835ICState *s = opaque;
 
+    //printf("offset %#x\n", offset);
     switch (offset) {
     case FIQ_CONTROL:
         s->fiq_select = extract32(val, 0, 7);
@@ -157,6 +163,7 @@ static void bcm2835_ic_write(void *opaque, hwaddr offset, uint64_t val,
         s->arm_irq_enable &= ~val & 0xff;
         break;
     default:
+        //printf("Are you kidding?\n");
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset %"HWADDR_PRIx"\n",
                       __func__, offset);
         return;

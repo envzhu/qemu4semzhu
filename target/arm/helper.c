@@ -18,6 +18,8 @@
 #include "sysemu/kvm.h"
 #include "fpu/softfloat.h"
 
+#include <stdio.h>
+
 #define ARM_CPU_FREQ 1000000000 /* FIXME: 1 GHz, should be configurable */
 
 #ifndef CONFIG_USER_ONLY
@@ -986,7 +988,6 @@ static CPAccessResult pmreg_access_ccntr(CPUARMState *env,
         && isread) {
         return CP_ACCESS_OK;
     }
-
     return pmreg_access(env, ri, isread);
 }
 
@@ -1038,7 +1039,6 @@ static void pmcr_write(CPUARMState *env, const ARMCPRegInfo *ri,
 static uint64_t pmccntr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     uint64_t total_ticks;
-
     if (!arm_ccnt_enabled(env)) {
         /* Counter is disabled, do not change value */
         return env->cp15.c15_ccnt;
@@ -3287,8 +3287,10 @@ static CPAccessResult sp_el0_access(CPUARMState *env, const ARMCPRegInfo *ri,
         /* Access to SP_EL0 is undefined if it's being used as
          * the stack pointer.
          */
+        //printf("spdis\n");
         return CP_ACCESS_TRAP_UNCATEGORIZED;
     }
+        //printf("spen : %#x\n", env->sp_el[0]);
     return CP_ACCESS_OK;
 }
 
@@ -6245,6 +6247,8 @@ uint32_t arm_phys_excp_target_el(CPUState *cs, uint32_t excp_idx,
     int target_el;
     /* Is the highest EL AArch64? */
     int is64 = arm_feature(env, ARM_FEATURE_AARCH64);
+    
+    //** printf("Cause Interrupt\n");
 
     if (arm_feature(env, ARM_FEATURE_EL3)) {
         rw = ((env->cp15.scr_el3 & SCR_RW) == SCR_RW);
@@ -6268,6 +6272,16 @@ uint32_t arm_phys_excp_target_el(CPUState *cs, uint32_t excp_idx,
     default:
         scr = ((env->cp15.scr_el3 & SCR_EA) == SCR_EA);
         hcr = ((env->cp15.hcr_el2 & HCR_AMO) == HCR_AMO);
+        printf("Trap vserror\n");
+        /*
+        if(env->cp15.hcr_el2 & HCR_VSE){
+            env->cp15.hcr_el2 &= ~HCR_VSE;
+            hcr = 0;
+            printf("Cause SError 1\n");
+        } else {
+            hcr = ((env->cp15.hcr_el2 & HCR_AMO) == HCR_AMO);
+            printf("Cause SError 2\n");
+        }*/
         break;
     };
 
@@ -7933,6 +7947,7 @@ static void arm_cpu_do_interrupt_aarch32(CPUState *cs)
         offset = 8;
         break;
     case EXCP_IRQ:
+        printf("IRQ\n");
         new_mode = ARM_CPU_MODE_IRQ;
         addr = 0x18;
         /* Disable IRQ and imprecise data aborts.  */
@@ -8032,6 +8047,10 @@ static void arm_cpu_do_interrupt_aarch64(CPUState *cs)
     target_ulong addr = env->cp15.vbar_el[new_el];
     unsigned int new_mode = aarch64_pstate_mode(new_el, true);
 
+    // *printf("before do, pc : %#x, elr_el1 : %#x, elr_el2 : %#x\n", env->pc,  env->elr_el[1], env->elr_el[2]);
+
+    //** printf("CurrentEL : %d, NewEL : %d, Exceptio index : %d\n", arm_current_el(env), new_el, cs->exception_index);
+
     if (arm_current_el(env) < new_el) {
         /* Entry vector offset depends on whether the implemented EL
          * immediately lower than the target level is using AArch32 or AArch64
@@ -8074,6 +8093,9 @@ static void arm_cpu_do_interrupt_aarch64(CPUState *cs)
     case EXCP_HVC:
     case EXCP_HYP_TRAP:
     case EXCP_SMC:
+        /* if(cs->exception_index == EXCP_UDEF)
+            printf("Instruction Abort ec: %d\n", env->exception.syndrome>>26);
+         */
         env->cp15.esr_el[new_el] = env->exception.syndrome;
         break;
     case EXCP_IRQ:
@@ -8095,9 +8117,26 @@ static void arm_cpu_do_interrupt_aarch64(CPUState *cs)
     }
 
     if (is_a64(env)) {
+        /*if(new_el!=1){
+            env->banked_spsr[aarch64_banked_spsr_index(new_el)] = pstate_read(env);
+            printf("IRQ save\n");
+        }
+        // if((!(env->cp15.hcr_el2&EXCP_VIRQ)) && (!(env->cp15.hcr_el2&EXCP_VFIQ)))
+        if((new_el==2)&&(arm_current_el(env)==1)&&(cs->exception_index!=EXCP_HVC))
+            env->banked_spsr[aarch64_banked_spsr_index(1)] = pstate_read(env);
+        */
         env->banked_spsr[aarch64_banked_spsr_index(new_el)] = pstate_read(env);
         aarch64_save_sp(env, arm_current_el(env));
+        /*
+        // if((!(env->cp15.hcr_el2&EXCP_VIRQ)) && (!(env->cp15.hcr_el2&EXCP_VFIQ)))
+        if((new_el==2)&&(arm_current_el(env)==1)&&(cs->exception_index!=EXCP_HVC))
+            env->elr_el[1] = env->pc;
+        if(new_el!=1)
+            env->elr_el[new_el] = env->pc;
+        */
         env->elr_el[new_el] = env->pc;
+
+        //*printf("elr_el1 : %#x, elr_el2 : %#x\n", env->elr_el[1], env->elr_el[2]);
     } else {
         env->banked_spsr[aarch64_banked_spsr_index(new_el)] = cpsr_read(env);
         env->elr_el[new_el] = env->regs[15];
@@ -8111,9 +8150,13 @@ static void arm_cpu_do_interrupt_aarch64(CPUState *cs)
 
     pstate_write(env, PSTATE_DAIF | new_mode);
     env->aarch64 = 1;
+
     aarch64_restore_sp(env, new_el);
 
     env->pc = addr;
+    //env->sp_el[1] = env->sp_el[0];
+    //** printf("vbar : %#x, exception type : %d, interrupt_requset ; %d, epc ; %#x\n",
+    //**        env->cp15.vbar_el[new_el], cs->exception_index, cs->interrupt_request, addr);
 
     qemu_log_mask(CPU_LOG_INT, "...to EL%d PC 0x%" PRIx64 " PSTATE 0x%x\n",
                   new_el, env->pc, pstate_read(env));
@@ -8208,6 +8251,8 @@ void arm_cpu_do_interrupt(CPUState *cs)
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
     unsigned int new_el = env->exception.target_el;
+
+    // printf("arm_cpu_do_interrupt() :  env->exception.target_el : %d,\n", env->exception.target_el);
 
     assert(!arm_feature(env, ARM_FEATURE_M));
 
@@ -9154,10 +9199,14 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
      * Attribute and permission bit handling should also be checked when adding
      * support for those page table walks.
      */
+    //*printf("[qemu]get_phys_addr_lpae\n");
     if (aarch64) {
         level = 0;
         addrsize = 64;
         if (el > 1) {
+            //*printf("AArch64 MMU at EL %d\n", el);
+
+            /* AArch64 Stage 1 */
             if (mmu_idx != ARMMMUIdx_S2NS) {
                 tbi = extract64(tcr->raw_tcr, 20, 1);
             }
@@ -9216,7 +9265,12 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
                           "AArch32: VTCR.S / VTCR.T0SZ[3] mismatch\n");
         }
     }
-    t1sz = extract32(tcr->raw_tcr, 16, 6);
+    //printf("ttbr_vailed %d\n", ttbr1_valid);
+    if(ttbr1_valid)
+        t1sz = extract32(tcr->raw_tcr, 16, 6);
+    else
+        t1sz = 0;
+        
     if (aarch64) {
         t1sz = MIN(t1sz, 39);
         t1sz = MAX(t1sz, 16);
@@ -9236,6 +9290,7 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
         ttbr_select = 1;
     } else {
         /* in the gap between the two regions, this is a Translation fault */
+        printf("ARMFault_Translation\n");
         fault_type = ARMFault_Translation;
         goto do_fault;
     }
@@ -9252,9 +9307,15 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
         if (el < 2) {
             epd = extract32(tcr->raw_tcr, 7, 1);
         }
+        //*printf("vttbr_el2 : %#x\n", env->cp15.vttbr_el2);
+        //*printf("ttbr:  %#x\n", ttbr);
         inputsize = addrsize - t0sz;
-
+        //*printf("use only ttbr0, addrsize %x\n", addrsize);
+        //*printf("inputsize %x\n", inputsize);
         tg = extract32(tcr->raw_tcr, 14, 2);
+        if (tg == 0) { /* 4KB pages */
+            stride = 9;
+        }        
         if (tg == 1) { /* 64KB pages */
             stride = 13;
         }
@@ -9317,11 +9378,13 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
             /* 16KB or 64KB pages */
             startlevel = 3 - sl0;
         }
-
+        
+        //printf("startlevel %d\n", startlevel);
         /* Check that the starting level is valid. */
         ok = check_s2_mmu_setup(cpu, aarch64, startlevel,
                                 inputsize, stride);
         if (!ok) {
+            printf("ARMFault_Translation 2\n");
             fault_type = ARMFault_Translation;
             goto do_fault;
         }
@@ -9356,14 +9419,17 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
         descaddr |= (address >> (stride * (4 - level))) & indexmask;
         descaddr &= ~7ULL;
         nstable = extract32(tableattrs, 4, 1);
+                
         descriptor = arm_ldq_ptw(cs, descaddr, !nstable, mmu_idx, fi);
         if (fi->type != ARMFault_None) {
             goto do_fault;
         }
-
+        //*printf("address %#x, stride %#x, indexmask %#x\n", address, stride, indexmask);
+        //*printf("descaddr %x, nstable %x, level %x, descriptor %x \n", descaddr, nstable, level, descriptor);
         if (!(descriptor & 1) ||
             (!(descriptor & 2) && (level == 3))) {
             /* Invalid, or the Reserved level 3 encoding */
+            //--printf("Invalid, or the Reserved level 3 encoding\n");
             goto do_fault;
         }
         descaddr = descriptor & descaddrmask;
@@ -9385,14 +9451,21 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
          */
         page_size = (1ULL << ((stride * (4 - level)) + 3));
         descaddr |= (address & (page_size - 1));
+
+        //--printf("descaddr %x, descriptor %x page_size %x, stride %x, address %x\n", descaddr, descriptor, page_size, stride, address);        
+        //*printf("Lower attr%#x\n",  (extract64(descriptor, 2, 10)));
+        //*printf("Upper attr%#x\n",  (extract64(descriptor, 52, 12)));
         /* Extract attributes from the descriptor */
         attrs = extract64(descriptor, 2, 10)
             | (extract64(descriptor, 52, 12) << 10);
-
+        //*printf("attrs %x\n", attrs);
         if (mmu_idx == ARMMMUIdx_S2NS) {
             /* Stage 2 table descriptors do not include any attribute fields */
+            //*printf("break\n");        
+
             break;
         }
+
         /* Merge in attributes from table descriptors */
         attrs |= extract32(tableattrs, 0, 2) << 11; /* XN, PXN */
         attrs |= extract32(tableattrs, 3, 1) << 5; /* APTable[1] => AP[2] */
@@ -9408,9 +9481,11 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
     /* Here descaddr is the final physical address, and attributes
      * are all in attrs.
      */
+
     fault_type = ARMFault_AccessFlag;
     if ((attrs & (1 << 8)) == 0) {
         /* Access flag */
+        //--printf("AccessFlag Fault\n");
         goto do_fault;
     }
 
@@ -9419,6 +9494,10 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
 
     if (mmu_idx == ARMMMUIdx_S2NS) {
         ns = true;
+        ap = extract32(attrs, 4, 2);
+        xn = extract32(attrs, 12, 2);
+
+        //*printf("S2AP %#x, XN %#x\n", ap, xn);
         *prot = get_S2prot(env, ap, xn);
     } else {
         ns = extract32(attrs, 3, 1);
@@ -9428,6 +9507,7 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
 
     fault_type = ARMFault_Permission;
     if (!(*prot & (1 << access_type))) {
+        //--printf("ARMFuylt Permission\n");
         goto do_fault;
     }
 
@@ -9458,6 +9538,7 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
     return false;
 
 do_fault:
+    //--printf("get_phys fault %d\n", fault_type);
     fi->type = fault_type;
     fi->level = level;
     /* Tag the error as S2 for failed S1 PTW at S2 or ordinary S2.  */

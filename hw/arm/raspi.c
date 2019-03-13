@@ -25,7 +25,12 @@
 #define SMPBOOT_ADDR    0x300 /* this should leave enough space for ATAGS */
 #define MVBAR_ADDR      0x400 /* secure vectors */
 #define BOARDSETUP_ADDR (MVBAR_ADDR + 0x20) /* board setup code */
-#define FIRMWARE_ADDR_2 0x8000 /* Pi 2 loads kernel.img here by default */
+#if 0
+    #define FIRMWARE_ADDR_2 0x8000 /* Pi 2 loads kernel.img here by default */
+
+#else
+    #define FIRMWARE_ADDR_2 0x10000 /* Pi bootloader loads kernel.img here */
+#endif
 #define FIRMWARE_ADDR_3 0x80000 /* Pi 3 loads kernel.img here by default */
 #define SPINTABLE_ADDR  0xd8 /* Pi 3 bootloader spintable */
 
@@ -117,7 +122,7 @@ static void setup_boot(MachineState *machine, int version, size_t ram_size)
     binfo.board_id = raspi_boardid[version];
     binfo.ram_size = ram_size;
     binfo.nb_cpus = smp_cpus;
-
+    printf("ram size %#x\n", ram_size);
     if (version <= 2) {
         /* The rpi1 and 2 require some custom setup code to run in Secure
          * mode before booting a kernel (to set up the SMC vectors so
@@ -228,7 +233,11 @@ static void raspi2_machine_init(MachineClass *mc)
     mc->no_cdrom = 1;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a7");
     mc->max_cpus = BCM283X_NCPUS;
-    mc->min_cpus = BCM283X_NCPUS;
+    #if 0
+        mc->min_cpus = BCM283X_NCPUS;
+    #else
+        mc->min_cpus = 1;
+    #endif
     mc->default_cpus = BCM283X_NCPUS;
     mc->default_ram_size = 1024 * 1024 * 1024;
     mc->ignore_memory_transaction_failures = true;
@@ -251,7 +260,11 @@ static void raspi3_machine_init(MachineClass *mc)
     mc->no_cdrom = 1;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a53");
     mc->max_cpus = BCM283X_NCPUS;
-    mc->min_cpus = BCM283X_NCPUS;
+    #if 0
+        mc->min_cpus = BCM283X_NCPUS;
+    #else
+        mc->min_cpus = 1;
+    #endif
     mc->default_cpus = BCM283X_NCPUS;
     mc->default_ram_size = 1024 * 1024 * 1024;
 }

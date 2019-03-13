@@ -1,2 +1,4 @@
 # qemu4semzhu
-qemu for Semzhu-Visor
+Qemu for Semzhu-Visor
+
+Please see [Semzhu Project Page](https://github.com/envzhu/semzhu-project) for more detail.
