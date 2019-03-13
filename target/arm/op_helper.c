@@ -234,7 +234,7 @@ void arm_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr,
 
     fi.ea = arm_extabort_type(response);
     fi.type = ARMFault_SyncExternal;
-    printf("Are you 1 ? $pc : %#8x\n", cpu->env.pc);
+    printf("Arm CPU transaction_failed $pc : %#8x\n", (uint32_t)cpu->env.pc);
     deliver_fault(cpu, addr, access_type, mmu_idx, &fi);
 }
 

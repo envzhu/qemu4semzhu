@@ -472,7 +472,7 @@ static inline void cpu_handle_debug_exception(CPUState *cpu)
 
 static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
 {
-    ARMCPU *arm = ARM_CPU(cpu);
+    // ARMCPU *arm = ARM_CPU(cpu);
 
     if (cpu->exception_index < 0) {
 #ifndef CONFIG_USER_ONLY
@@ -712,7 +712,7 @@ int cpu_exec(CPUState *cpu)
         }
     }
     
-    ARMCPU *arm = ARM_CPU(cpu);
+    // ARMCPU *arm = ARM_CPU(cpu);
 
     //printf("cpu_exec() :   env->exception.target_el : %d\n", arm->env.exception.target_el);
 

@@ -1105,7 +1105,7 @@ static void arm_load_kernel_notify(Notifier *notifier, void *data)
                                           info->ram_size - info->initrd_start,
                                           as);
             printf("initrd start addr : %#8x, size : %#x\n",
-                info->initrd_start, initrd_size);
+                (uint32_t)info->initrd_start, (uint32_t)initrd_size);
             if (initrd_size < 0) {
                 initrd_size = load_image_targphys_as(info->initrd_filename,
                                                      info->initrd_start,

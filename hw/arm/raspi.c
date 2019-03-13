@@ -122,7 +122,7 @@ static void setup_boot(MachineState *machine, int version, size_t ram_size)
     binfo.board_id = raspi_boardid[version];
     binfo.ram_size = ram_size;
     binfo.nb_cpus = smp_cpus;
-    printf("ram size %#x\n", ram_size);
+    printf("ram size %#8x\n", (uint32_t)ram_size);
     if (version <= 2) {
         /* The rpi1 and 2 require some custom setup code to run in Secure
          * mode before booting a kernel (to set up the SMC vectors so
